@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { writeFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import ky from "ky";
 import { z } from "zod";
 
@@ -29,6 +29,38 @@ async function main(): Promise<number> {
     }
     return await logIn(username, password);
   }
+
+  if (args[0] === "test") {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      console.log("Could not read refresh token from refresh-token.txt file");
+      return 1;
+    }
+    const accessRes = await getAccessToken(refreshToken);
+    if (!accessRes.success) {
+      console.log("Could not get accessToken. The LMS returned an error:");
+      console.log(accessRes.error);
+      return 1;
+    }
+
+    writeFileSync("./refresh-token.txt", accessRes.refreshToken);
+
+    const accessToken = accessRes.accessToken;
+
+    const res = await ky
+      .get(
+        "https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/list?moduleId=17098215&groupId=17209734",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      )
+      .json();
+    console.log(res);
+    return 0;
+  }
+
   return 1;
 }
 
@@ -38,7 +70,7 @@ async function main(): Promise<number> {
 })();
 
 async function logIn(username: string, password: string): Promise<number> {
-  const loginResponseSchema = z.discriminatedUnion("success", [
+  const loginResSchema = z.discriminatedUnion("success", [
     z.object({
       success: z.literal(true),
       error: z.literal("ok"),
@@ -49,7 +81,9 @@ async function logIn(username: string, password: string): Promise<number> {
       error: z.string(),
     }),
   ]);
+
   console.log("Logging in... It's going to take a long time");
+
   const rawResponse = await ky
     .post("https://api.admin.edu.goiteens.com/api/v1/auth/login", {
       json: {
@@ -60,7 +94,8 @@ async function logIn(username: string, password: string): Promise<number> {
       timeout: 60000,
     })
     .json();
-  const res = loginResponseSchema.parse(rawResponse);
+
+  const res = loginResSchema.parse(rawResponse);
 
   if (!res.success) {
     console.log("An error was returned by the LMS:");
@@ -74,4 +109,39 @@ async function logIn(username: string, password: string): Promise<number> {
   );
   console.log("It's necessary for any other command to work.");
   return 0;
+}
+
+function getRefreshToken(): string | undefined {
+  try {
+    return readFileSync("./refresh-token.txt", { encoding: "utf-8" });
+  } catch (e) {
+    return undefined;
+  }
+}
+
+async function getAccessToken(refreshToken: string) {
+  const refreshResSchema = z.discriminatedUnion("success", [
+    z.object({
+      success: z.literal(true),
+      error: z.literal("ok"),
+      refreshToken: z.string(),
+      accessToken: z.string(),
+    }),
+    z.object({
+      success: z.literal(false),
+      error: z.string(),
+    }),
+  ]);
+
+  const res = refreshResSchema.parse(
+    await ky
+      .post("https://api.admin.edu.goiteens.com/api/v1/auth/refresh", {
+        headers: {
+          Cookie: `refreshToken=${refreshToken}`,
+        },
+      })
+      .json()
+  );
+
+  return res;
 }
