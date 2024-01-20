@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::{self, File},
     io::Write,
 };
@@ -21,7 +22,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Log in GoITeens admin panel, creating refresh-token.txt file
+    /// Log in to GoITeens admin panel, creating refresh-token.txt file
     Login {
         /// GoITeens LMS admin panel username (email)
         username: String,
@@ -29,6 +30,8 @@ enum Commands {
         /// GoITeens LMS admin panel password
         password: String,
     },
+    /// Log in to GoITeens admin panel using environment variables LMS_USERNAME and LMS_PASSWORD (.env supported)
+    LoginEnv,
     /// Request test data
     Test,
 }
@@ -49,23 +52,14 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Login { username, password } => {
-            println!("Logging in... It's going to take a long time");
-            let res: TokenResponse =
-                ureq::post("https://api.admin.edu.goiteens.com/api/v1/auth/login")
-                    .send_json(json!({
-                        "username": username,
-                        "password": password,
-                        "url": "https://admin.edu.goiteens.com/account/login"
-                    }))
-                    .context("Network error while logging in")?
-                    .into_json()?;
-            if !res.success {
-                bail!("LMS Error: {}", res.error);
-            }
-            let mut file = File::create("refresh-token.txt")?;
-            file.write_all(res.refresh_token.as_bytes())?;
-            println!("Logged in successfully! A file named refresh-token.txt should appear.");
-            println!("This file is necessary for all other commands to work");
+            log_in(&username, &password)?;
+        }
+        Commands::LoginEnv => {
+            let username =
+                env::var("LMS_USERNAME").context("No LMS_USERNAME environment variable found")?;
+            let password =
+                env::var("LMS_PASSWORD").context("No LMS_PASSWORD environment variable found")?;
+            log_in(&username, &password)?;
         }
         Commands::Test => {
             let refresh_token = get_refresh_token()?;
@@ -79,6 +73,30 @@ fn main() -> Result<()> {
             println!("{res:#?}");
         }
     };
+    Ok(())
+}
+
+fn log_in(username: &str, password: &str) -> Result<()> {
+    println!("Logging in... It's going to take a long time");
+
+    let res: TokenResponse = ureq::post("https://api.admin.edu.goiteens.com/api/v1/auth/login")
+        .send_json(json!({
+            "username": username,
+            "password": password,
+            "url": "https://admin.edu.goiteens.com/account/login"
+        }))
+        .context("Network error while logging in")?
+        .into_json()?;
+
+    if !res.success {
+        bail!("LMS Error: {}", res.error);
+    }
+
+    let mut file = File::create("refresh-token.txt")?;
+    file.write_all(res.refresh_token.as_bytes())?;
+
+    println!("Successfully logged in! A file named refresh-token.txt should appear.");
+    println!("This file is necessary for all other commands to work");
     Ok(())
 }
 
