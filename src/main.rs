@@ -4,6 +4,7 @@ use std::{
     io::Write,
 };
 
+use ahash::AHashMap;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
@@ -173,6 +174,22 @@ fn main() -> Result<()> {
                     }
                 } else {
                     lessons.push(Lesson::new(name, link, None, "Soft skills"));
+                }
+            }
+
+            let mut lesson_counts = AHashMap::default();
+
+            for lesson in &mut lessons {
+                let count = *lesson_counts
+                    .entry(lesson.name.clone())
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1u8);
+                if count > 1 {
+                    let marker = format!(" ({count})");
+                    lesson.name = format!(
+                        "{}{marker}",
+                        truncate_chars(&lesson.name, 70 - marker.len())
+                    );
                 }
             }
 
