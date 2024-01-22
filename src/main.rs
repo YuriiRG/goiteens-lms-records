@@ -30,10 +30,15 @@ enum Commands {
         /// GoITeens LMS admin panel password
         password: String,
     },
+
     /// Log in to GoITeens admin panel using environment variables LMS_USERNAME and LMS_PASSWORD (.env supported)
     LoginEnv,
-    /// Request test data
-    Test,
+
+    /// Upload records from input.txt file
+    ///
+    /// input.txt has tech skills and soft skills lessons separated by double newline.
+    /// Each lesson is is tab-separated line with the lesson's name and a link to its record.
+    Upload { group_id: u64 },
 }
 
 #[derive(Deserialize)]
@@ -43,6 +48,36 @@ struct TokenResponse {
     error: String,
     refresh_token: String,
     access_token: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct GenericResponse {
+    success: bool,
+    error: String,
+}
+
+#[derive(Debug)]
+struct Lesson {
+    name: String,
+    link: String,
+}
+
+impl Lesson {
+    fn new(name: &str, link: &str, i: Option<usize>, lesson_type: &str) -> Lesson {
+        let marker = match i {
+            None => "".to_string(),
+            Some(i) => format!("({})", i + 1),
+        };
+        Lesson {
+            name: if name.to_lowercase().contains(&lesson_type.to_lowercase()) {
+                format!("{name}{marker}")
+            } else {
+                format!("{lesson_type} {name}{marker}")
+            },
+            link: link.to_string(),
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -61,16 +96,82 @@ fn main() -> Result<()> {
                 env::var("LMS_PASSWORD").context("No LMS_PASSWORD environment variable found")?;
             log_in(&username, &password)?;
         }
-        Commands::Test => {
+        Commands::Upload { group_id } => {
             let refresh_token = get_refresh_token()?;
             let access_token = get_access_token(&refresh_token)?;
 
-            let res: serde_json::Value = ureq::get("https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/list?moduleId=17098215&groupId=17209734")
+            let lessons = fs::read_to_string("./input.txt")
+                .context("input.txt file not found")?
+                .replace("\r\n", "\n");
+
+            let (tech_skills, soft_skills) = lessons.split_once("\n\n").unwrap_or((&lessons, ""));
+
+            let tech_skills =
+                tech_skills
+                    .lines()
+                    .filter_map(|lesson| match lesson.split_once('\t') {
+                        None => None,
+                        Some((_, "")) => None,
+                        full => full,
+                    });
+
+            let soft_skills =
+                soft_skills
+                    .lines()
+                    .filter_map(|lesson| match lesson.split_once('\t') {
+                        None => None,
+                        Some((_, "")) => None,
+                        full => full,
+                    });
+
+            let mut lessons = vec![];
+
+            for (name, link) in tech_skills {
+                if link.contains(' ') {
+                    let links: Vec<_> = link.split(' ').collect();
+                    for (i, link) in links.into_iter().enumerate() {
+                        lessons.push(Lesson::new(name, link, Some(i), "Tech skills"));
+                    }
+                } else {
+                    lessons.push(Lesson::new(name, link, None, "Tech skills"));
+                }
+            }
+
+            for (name, link) in soft_skills {
+                if link.contains(' ') {
+                    let links: Vec<_> = link.split(' ').collect();
+                    for (i, link) in links.into_iter().enumerate() {
+                        lessons.push(Lesson::new(name, link, Some(i), "Soft skills"));
+                    }
+                } else {
+                    lessons.push(Lesson::new(name, link, None, "Soft skills"));
+                }
+            }
+
+            for lesson in lessons {
+                let lesson_type = if lesson.link.contains("youtu") {
+                    "video"
+                } else {
+                    "other"
+                };
+                let res: GenericResponse = ureq::post("https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/create")
                 .set("Authorization", &format!("Bearer {access_token}"))
-                .call()?
+                .send_json(json!({
+                    "category": "group",
+                    "type": lesson_type,
+                    "moduleId": 17063573,
+                    "groupId": group_id,
+                    "name": lesson.name,
+                    "link": lesson.link
+                }))?
                 .into_json()?;
 
-            println!("{res:#?}");
+                if res.success {
+                    println!("Successfully uploaded lesson {}", lesson.name);
+                } else {
+                    bail!("GoITeens LMS returned an error: {}", res.error);
+                }
+            }
         }
     };
     Ok(())
@@ -89,7 +190,7 @@ fn log_in(username: &str, password: &str) -> Result<()> {
         .into_json()?;
 
     if !res.success {
-        bail!("LMS Error: {}", res.error);
+        bail!("GoITeens LMS returned an error: {}", res.error);
     }
 
     let mut file = File::create("refresh-token.txt")?;
@@ -107,7 +208,7 @@ fn get_access_token(refresh_token: &str) -> Result<String> {
         .into_json()?;
 
     if !res.success {
-        bail!("LMS Error: {}", res.error);
+        bail!("GoITeens LMS returned an error: {}", res.error);
     }
 
     let mut file = File::create("refresh-token.txt")?;
