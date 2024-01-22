@@ -87,7 +87,11 @@ impl Lesson {
             Some(i) => format!(" ({})", i + 1),
         };
         Lesson {
-            name: if name.to_lowercase().contains(&lesson_type.to_lowercase()) {
+            name: if name.to_lowercase().contains(&lesson_type.to_lowercase())
+                || name
+                    .to_lowercase()
+                    .contains(&lesson_type.to_lowercase().replace(' ', "_"))
+            {
                 format!("{}{marker}", truncate_chars(name, 70 - marker.len()))
             } else {
                 format!(
