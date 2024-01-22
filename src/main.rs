@@ -34,11 +34,14 @@ enum Commands {
     /// Log in to GoITeens admin panel using environment variables LMS_USERNAME and LMS_PASSWORD (.env supported)
     LoginEnv,
 
-    /// Upload records from input.txt file
+    /// Upload records into the LMS for a group from input.txt file
     ///
     /// input.txt has tech skills and soft skills lessons separated by double newline.
     /// Each lesson is is tab-separated line with the lesson's name and a link to its record.
     Upload { group_id: u64 },
+
+    /// Remove all lesson records for a group
+    Remove { group_id: u64 },
 }
 
 #[derive(Deserialize)]
@@ -61,6 +64,19 @@ struct GenericResponse {
 struct Lesson {
     name: String,
     link: String,
+}
+
+#[derive(Deserialize)]
+struct LessonListResponse {
+    success: bool,
+    error: String,
+    group: Option<Vec<LessonResponse>>,
+}
+
+#[derive(Deserialize)]
+struct LessonResponse {
+    id: u64,
+    name: String,
 }
 
 impl Lesson {
@@ -94,6 +110,8 @@ fn main() -> Result<()> {
     dotenv().ok();
 
     let cli = Cli::parse();
+
+    let agent = ureq::AgentBuilder::new().build();
 
     match cli.command {
         Commands::Login { username, password } => {
@@ -164,7 +182,7 @@ fn main() -> Result<()> {
                 } else {
                     "other"
                 };
-                let res: GenericResponse = ureq::post("https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/create")
+                let res: GenericResponse = agent.post("https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/create")
                 .set("Authorization", &format!("Bearer {access_token}"))
                 .send_json(json!({
                     "category": "group",
@@ -178,6 +196,37 @@ fn main() -> Result<()> {
 
                 if res.success {
                     println!("Successfully uploaded lesson {}", lesson.name);
+                } else {
+                    bail!("GoITeens LMS returned an error: {}", res.error);
+                }
+            }
+        }
+        Commands::Remove { group_id } => {
+            let refresh_token = get_refresh_token()?;
+            let access_token = get_access_token(&refresh_token)?;
+
+            let res: LessonListResponse = agent.get(&format!("https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/list?moduleId=17063573&groupId={group_id}"))
+                .set("Authorization", &format!("Bearer {access_token}"))
+                .call()?
+                .into_json()?;
+
+            if !res.success {
+                bail!("GoITeens LMS returned an error: {}", res.error);
+            }
+
+            let lessons = res
+                .group
+                .context("GoITeens LMS returned an invalid response")?;
+
+            for lesson in lessons {
+                let res: GenericResponse = agent.post("https://api.admin.edu.goiteens.com/api/v1/training-module/additional-material/delete")
+                    .set("Authorization", &format!("Bearer {access_token}"))
+                    .send_json(json!({
+                        "materialId": lesson.id
+                    }))?
+                    .into_json()?;
+                if res.success {
+                    println!("Successfully removed lesson {}", lesson.name);
                 } else {
                     bail!("GoITeens LMS returned an error: {}", res.error);
                 }
