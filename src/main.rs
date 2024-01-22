@@ -17,6 +17,10 @@ use serde_json::json;
 #[command(version)]
 #[command(about = "Uploads lesson records to GoITeens LMS", long_about = None)]
 struct Cli {
+    /// Quiet mode. Don't print successful actions
+    #[arg(short, long)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -120,14 +124,14 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Login { username, password } => {
-            log_in(&username, &password)?;
+            log_in(&username, &password, cli.quiet)?;
         }
         Commands::LoginEnv => {
             let username =
                 env::var("LMS_USERNAME").context("No LMS_USERNAME environment variable found")?;
             let password =
                 env::var("LMS_PASSWORD").context("No LMS_PASSWORD environment variable found")?;
-            log_in(&username, &password)?;
+            log_in(&username, &password, cli.quiet)?;
         }
         Commands::Upload { group_id } => {
             let refresh_token = get_refresh_token()?;
@@ -216,9 +220,15 @@ fn main() -> Result<()> {
                 .into_json()?;
 
                 if res.success {
-                    println!("Successfully uploaded lesson {}", lesson.name);
+                    if !cli.quiet {
+                        println!("Successfully uploaded lesson \"{}\"", lesson.name);
+                    }
                 } else {
-                    bail!("GoITeens LMS returned an error: {}", res.error);
+                    bail!(
+                        "When uploading lesson \"{}\" GoITeens LMS returned an error: {}",
+                        lesson.name,
+                        res.error
+                    );
                 }
             }
         }
@@ -247,9 +257,15 @@ fn main() -> Result<()> {
                     }))?
                     .into_json()?;
                 if res.success {
-                    println!("Successfully removed lesson {}", lesson.name);
+                    if !cli.quiet {
+                        println!("Successfully removed lesson {}", lesson.name);
+                    }
                 } else {
-                    bail!("GoITeens LMS returned an error: {}", res.error);
+                    bail!(
+                        "When removing lesson \"{}\" GoITeens LMS returned an error: {}",
+                        lesson.name,
+                        res.error
+                    );
                 }
             }
         }
@@ -257,8 +273,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn log_in(username: &str, password: &str) -> Result<()> {
-    println!("Logging in... It's going to take a long time");
+fn log_in(username: &str, password: &str, quiet: bool) -> Result<()> {
+    if !quiet {
+        println!("Logging in... It's going to take a long time");
+    }
 
     let res: TokenResponse = ureq::post("https://api.admin.edu.goiteens.com/api/v1/auth/login")
         .send_json(json!({
@@ -276,8 +294,10 @@ fn log_in(username: &str, password: &str) -> Result<()> {
     let mut file = File::create("refresh-token.txt")?;
     file.write_all(res.refresh_token.as_bytes())?;
 
-    println!("Successfully logged in! A file named refresh-token.txt should appear.");
-    println!("This file is necessary for all other commands to work");
+    if !quiet {
+        println!("Successfully logged in! A file named refresh-token.txt should appear.");
+        println!("This file is necessary for all other commands to work");
+    }
     Ok(())
 }
 
