@@ -1,4 +1,4 @@
-# LMS recods script
+# LMS records script
 
 A CLI program to upload lesson records to GoITeens LMS. It can upload and remove the records. Written in [Rust](https://www.rust-lang.org/).
 
