@@ -67,16 +67,26 @@ impl Lesson {
     fn new(name: &str, link: &str, i: Option<usize>, lesson_type: &str) -> Lesson {
         let marker = match i {
             None => "".to_string(),
-            Some(i) => format!("({})", i + 1),
+            Some(i) => format!(" ({})", i + 1),
         };
         Lesson {
             name: if name.to_lowercase().contains(&lesson_type.to_lowercase()) {
-                format!("{name}{marker}")
+                format!("{}{marker}", truncate_chars(name, 70 - marker.len()))
             } else {
-                format!("{lesson_type} {name}{marker}")
+                format!(
+                    "{}{marker}",
+                    truncate_chars(&format!("{lesson_type} {name}"), 70 - marker.len())
+                )
             },
             link: link.to_string(),
         }
+    }
+}
+
+fn truncate_chars(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        None => s,
+        Some((idx, _)) => &s[..idx],
     }
 }
 
