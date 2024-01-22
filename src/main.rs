@@ -43,10 +43,16 @@ enum Commands {
     ///
     /// input.txt has tech skills and soft skills lessons separated by double newline.
     /// Each lesson is is tab-separated line with the lesson's name and a link to its record.
-    Upload { group_id: u64 },
+    Upload {
+        /// Id of the affected group. Can be obtained by copying it from the group's URL (it's the first number).
+        group_id: u64,
+    },
 
     /// Remove all lesson records for a group
-    Remove { group_id: u64 },
+    Remove {
+        /// Id of the affected group. Can be obtained by copying it from the group's URL (it's the first number).
+        group_id: u64,
+    },
 }
 
 #[derive(Deserialize)]
