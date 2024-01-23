@@ -145,7 +145,8 @@ fn main() -> Result<()> {
 
             let lessons = fs::read_to_string("./input.txt")
                 .context("input.txt file not found")?
-                .replace("\r\n", "\n");
+                .replace("\r\n", "\n")
+                .replace("\n\t", " ");
 
             let (tech_skills, soft_skills) = lessons.split_once("\n\n").unwrap_or((&lessons, ""));
 
