@@ -172,7 +172,7 @@ fn main() -> Result<()> {
 
             for (name, link) in tech_skills {
                 if link.contains(' ') {
-                    let links: Vec<_> = link.split(' ').collect();
+                    let links: Vec<_> = link.split(' ').filter(|str| !str.is_empty()).collect();
                     for (i, link) in links.into_iter().enumerate() {
                         lessons.push(Lesson::new(name, link, Some(i), "Tech skills"));
                     }
