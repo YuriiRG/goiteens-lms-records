@@ -55,6 +55,12 @@ enum Commands {
     },
 }
 
+#[derive(Clone, Copy)]
+enum LessonType {
+    TechSkills,
+    SoftSkills,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TokenResponse {
@@ -91,22 +97,26 @@ struct LessonResponse {
 }
 
 impl Lesson {
-    fn new(name: &str, link: &str, i: Option<usize>, lesson_type: &str) -> Lesson {
+    fn new(name: &str, link: &str, i: Option<usize>, lesson_type: LessonType) -> Lesson {
+        let lesson_type_name = match lesson_type {
+            LessonType::TechSkills => "Tech skills",
+            LessonType::SoftSkills => "Soft skills",
+        };
         let marker = match i {
             None => "".to_string(),
             Some(i) => format!(" ({})", i + 1),
         };
         Lesson {
-            name: if name.to_lowercase().contains(&lesson_type.to_lowercase())
-                || name
-                    .to_lowercase()
-                    .contains(&lesson_type.to_lowercase().replace(' ', "_"))
+            name: if name.to_lowercase().contains("tech skills")
+                || name.to_lowercase().contains("tech_skills")
+                || name.to_lowercase().contains("soft skills")
+                || name.to_lowercase().contains("soft_skills")
             {
                 format!("{}{marker}", truncate_chars(name, 70 - marker.len()))
             } else {
                 format!(
                     "{}{marker}",
-                    truncate_chars(&format!("{lesson_type} {name}"), 70 - marker.len())
+                    truncate_chars(&format!("{lesson_type_name} {name}"), 70 - marker.len())
                 )
             },
             link: link.to_string(),
@@ -170,25 +180,17 @@ fn main() -> Result<()> {
 
             let mut lessons = vec![];
 
-            for (name, link) in tech_skills {
+            for ((name, link), lesson_type) in tech_skills
+                .map(|lesson| (lesson, LessonType::TechSkills))
+                .chain(soft_skills.map(|lesson| (lesson, LessonType::SoftSkills)))
+            {
                 if link.contains(' ') {
                     let links: Vec<_> = link.split(' ').filter(|str| !str.is_empty()).collect();
                     for (i, link) in links.into_iter().enumerate() {
-                        lessons.push(Lesson::new(name, link, Some(i), "Tech skills"));
+                        lessons.push(Lesson::new(name, link, Some(i), lesson_type));
                     }
                 } else {
-                    lessons.push(Lesson::new(name, link, None, "Tech skills"));
-                }
-            }
-
-            for (name, link) in soft_skills {
-                if link.contains(' ') {
-                    let links: Vec<_> = link.split(' ').collect();
-                    for (i, link) in links.into_iter().enumerate() {
-                        lessons.push(Lesson::new(name, link, Some(i), "Soft skills"));
-                    }
-                } else {
-                    lessons.push(Lesson::new(name, link, None, "Soft skills"));
+                    lessons.push(Lesson::new(name, link, None, lesson_type));
                 }
             }
 
