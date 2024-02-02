@@ -210,6 +210,25 @@ fn main() -> Result<()> {
                 }
             }
 
+            let mut link_counts = AHashMap::default();
+
+            lessons = lessons
+                .into_iter()
+                .filter(|lesson| {
+                    let count = *link_counts
+                        .entry(lesson.link.clone())
+                        .and_modify(|count| *count += 1)
+                        .or_insert(1u8);
+                    if count > 1 && !cli.quiet {
+                        println!(
+                            "A duplicate link was found and removed: \"{}\" \"{}\"",
+                            lesson.name, lesson.link
+                        );
+                    }
+                    count == 1
+                })
+                .collect::<Vec<_>>();
+
             for lesson in lessons {
                 let lesson_type = if lesson.link.contains("youtu") {
                     "video"
